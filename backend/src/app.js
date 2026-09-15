@@ -1,6 +1,8 @@
 import express from 'express'
 import cors from 'cors'
 
+import authRoutes from './routes/authRoutes.js'
+
 const app = express()
 
 app.use(
@@ -17,5 +19,7 @@ app.get('/api/health', (req, res) => {
     message: 'Joineazy API is running',
   })
 })
+
+app.use('/api/auth', authRoutes)
 
 export default app
