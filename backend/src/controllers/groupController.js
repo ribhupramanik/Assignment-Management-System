@@ -139,3 +139,202 @@ export const getMyGroups = async (req, res) => {
     })
   }
 }
+
+export const addGroupMember = async (req, res) => {
+  try {
+    const { groupId } = req.params
+    const { identifier } = req.body
+
+    if (!identifier || !identifier.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Student email or student ID is required',
+      })
+    }
+
+    const groupResult = await pool.query(
+      `
+        SELECT
+          id,
+          name,
+          created_by
+        FROM groups
+        WHERE id = $1
+      `,
+      [groupId]
+    )
+
+    if (groupResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found',
+      })
+    }
+
+    const group = groupResult.rows[0]
+
+    if (String(group.created_by) !== String(req.user.id)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the group creator can add members',
+      })
+    }
+
+    const normalizedIdentifier = identifier.trim()
+
+    const studentResult = await pool.query(
+      `
+        SELECT
+          id,
+          student_id,
+          name,
+          email
+        FROM users
+        WHERE role = 'student'
+          AND (
+            LOWER(email) = LOWER($1)
+            OR student_id = $1
+          )
+        LIMIT 1
+      `,
+      [normalizedIdentifier]
+    )
+
+    if (studentResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No student found with this email or student ID',
+      })
+    }
+
+    const student = studentResult.rows[0]
+
+    const memberResult = await pool.query(
+      `
+        INSERT INTO group_members (
+          group_id,
+          student_id
+        )
+        VALUES ($1, $2)
+        RETURNING joined_at
+      `,
+      [group.id, student.id]
+    )
+
+    return res.status(201).json({
+      success: true,
+      message: 'Student added to group successfully',
+      member: {
+        id: student.id,
+        student_id: student.student_id,
+        name: student.name,
+        email: student.email,
+        joined_at: memberResult.rows[0].joined_at,
+      },
+    })
+  } catch (error) {
+    if (
+      error.code === '23505' &&
+      error.constraint === 'unique_group_member'
+    ) {
+      return res.status(409).json({
+        success: false,
+        message: 'Student is already a member of this group',
+      })
+    }
+
+    console.error('Add group member error:', error)
+
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+    })
+  }
+}
+
+export const getGroupMembers = async (req, res) => {
+  try {
+    const { groupId } = req.params
+
+    const groupResult = await pool.query(
+      `
+        SELECT
+          id,
+          name,
+          created_by
+        FROM groups
+        WHERE id = $1
+      `,
+      [groupId]
+    )
+
+    if (groupResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found',
+      })
+    }
+
+    const group = groupResult.rows[0]
+
+    const membershipResult = await pool.query(
+      `
+        SELECT id
+        FROM group_members
+        WHERE group_id = $1
+          AND student_id = $2
+      `,
+      [groupId, req.user.id]
+    )
+
+    if (membershipResult.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not a member of this group',
+      })
+    }
+
+    const membersResult = await pool.query(
+      `
+        SELECT
+          u.id,
+          u.student_id,
+          u.name,
+          u.email,
+          gm.joined_at,
+          (u.id = g.created_by) AS is_creator
+        FROM group_members AS gm
+
+        INNER JOIN users AS u
+          ON u.id = gm.student_id
+
+        INNER JOIN groups AS g
+          ON g.id = gm.group_id
+
+        WHERE gm.group_id = $1
+
+        ORDER BY
+          is_creator DESC,
+          gm.joined_at ASC
+      `,
+      [groupId]
+    )
+
+    return res.status(200).json({
+      success: true,
+      group: {
+        id: group.id,
+        name: group.name,
+        created_by: group.created_by,
+      },
+      members: membersResult.rows,
+    })
+  } catch (error) {
+    console.error('Get group members error:', error)
+
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+    })
+  }
+}
