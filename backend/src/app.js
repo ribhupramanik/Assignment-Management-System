@@ -4,6 +4,7 @@ import cors from 'cors'
 import authRoutes from './routes/authRoutes.js'
 import groupRoutes from './routes/groupRoutes.js'
 import adminAssignmentRoutes from './routes/adminAssignmentRoutes.js'
+import studentAssignmentRoutes from './routes/studentAssignmentRoutes.js'
 
 const app = express()
 
@@ -25,5 +26,6 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes)
 app.use('/api/groups', groupRoutes)
 app.use('/api/admin/assignments', adminAssignmentRoutes)
+app.use('/api/assignments', studentAssignmentRoutes)
 
 export default app
