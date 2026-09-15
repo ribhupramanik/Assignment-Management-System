@@ -5,6 +5,7 @@ import authRoutes from './routes/authRoutes.js'
 import groupRoutes from './routes/groupRoutes.js'
 import adminAssignmentRoutes from './routes/adminAssignmentRoutes.js'
 import studentAssignmentRoutes from './routes/studentAssignmentRoutes.js'
+import adminDashboardRoutes from './routes/adminDashboardRoutes.js'
 
 const app = express()
 
@@ -27,5 +28,6 @@ app.use('/api/auth', authRoutes)
 app.use('/api/groups', groupRoutes)
 app.use('/api/admin/assignments', adminAssignmentRoutes)
 app.use('/api/assignments', studentAssignmentRoutes)
+app.use('/api/admin/dashboard', adminDashboardRoutes)
 
 export default app
