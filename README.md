@@ -92,6 +92,14 @@ The application allows students to create and manage groups, access assignments,
 - CORS
 - dotenv
 
+### Containers and Serving
+
+- Docker and Docker Compose
+- PostgreSQL 16 Alpine container
+- Node.js 22 Alpine images for backend runtime and frontend build
+- Nginx for serving the frontend production build
+- Persistent Docker volume for PostgreSQL data
+
 ### Database
 
 - PostgreSQL
@@ -100,6 +108,45 @@ The application allows students to create and manage groups, access assignments,
 - Transactions
 - Cascading relationships
 - SQL migrations
+
+---
+
+## Architecture Overview
+
+Joineazy separates the React interface, Express REST API, and PostgreSQL database.
+
+```text
+Browser
+  ├── GET http://localhost:5173
+  │       └── Frontend container: Nginx :80 → React/Vite static build
+  │
+  └── REST requests + JWT → http://localhost:5000/api
+          └── Backend container: Node.js / Express :5000
+                  └── Parameterized SQL via pg → db:5432
+                          └── PostgreSQL container → persistent volume
+
+Student → professor-provided OneDrive link → external file submission
+Student → Joineazy API → submission confirmation and timestamp
+```
+
+React runs in the browser, so its API URL must be reachable from the browser. In this local Docker setup it calls `http://localhost:5000/api` directly; Nginx serves the frontend and does not proxy API requests. Express connects to PostgreSQL through the Compose service name `db` on the internal Docker network.
+
+The backend validates JWTs, enforces roles and assignment access, and handles group, assignment, confirmation, and analytics operations. PostgreSQL stores users, groups, memberships, assignments, assignment targeting, and submission confirmations. Joineazy records student confirmations; it does not independently verify files uploaded to OneDrive.
+
+See [docs/database.md](docs/database.md) for the ER diagram and database documentation.
+
+---
+
+## Key Design Decisions
+
+- **JWT authentication and backend authorization:** authenticated requests use JWTs. Backend middleware enforces the `student` and `admin` roles; frontend route protection supports navigation but is not the security boundary.
+- **Seeded professor account:** public registration creates students only. A repeatable server-side seed creates or updates the professor account, with passwords hashed before storage.
+- **Relational data model:** `group_members` and `assignment_groups` represent many-to-many relationships. Foreign keys and unique constraints protect consistency, while transactions keep multi-step changes together.
+- **Explicit assignment scope:** assignments target either all students or selected groups. Access checks use the student's membership rather than relying on which links the interface displays.
+- **External file submission:** professors provide OneDrive links; Joineazy stores confirmations and timestamps. This keeps file hosting outside the application. Confirmation and late status describe the recorded confirmation, not independent proof of an upload.
+- **Two-step confirmation:** the interface asks for a final confirmation, and the backend requires `confirmed: true` before recording it.
+- **Calculated progress:** completion percentages and statuses come from current membership and confirmation data, avoiding a separately stored percentage that could become stale.
+- **Duplicate prevention:** group names are unique per creator, and assignment validation prevents confusing duplicate titles for the same audience.
 
 ---
 
@@ -118,6 +165,7 @@ MERN-JoinEazy_Task/
 │   │   │   ├── adminGroupController.js
 │   │   │   ├── adminSubmissionController.js
 │   │   │   ├── assignmentController.js
+│   │   │   ├── authController.js
 │   │   │   ├── groupController.js
 │   │   │   ├── progressController.js
 │   │   │   ├── studentAssignmentController.js
@@ -142,9 +190,14 @@ MERN-JoinEazy_Task/
 │   │   │   ├── groupRoutes.js
 │   │   │   └── studentAssignmentRoutes.js
 │   │   │
+│   │   ├── utils/
+│   │   │   └── generateToken.js
+│   │   │
 │   │   ├── app.js
 │   │   └── server.js
 │   │
+│   ├── Dockerfile
+│   ├── .dockerignore
 │   ├── .env.example
 │   └── package.json
 │
@@ -157,9 +210,18 @@ MERN-JoinEazy_Task/
 │   │   ├── App.jsx
 │   │   └── main.jsx
 │   │
+│   ├── nginx.conf
+│   ├── Dockerfile
+│   ├── .dockerignore
 │   ├── .env.example
 │   └── package.json
 │
+├── docs/
+│   └── database.md
+│
+├── docker-compose.yml
+├── .env.docker.example
+├── .gitignore
 └── README.md
 ```
 
@@ -167,14 +229,28 @@ MERN-JoinEazy_Task/
 
 ## Prerequisites
 
-Make sure the following are installed:
+Choose either Docker Setup or Local Setup. Both run the same application.
 
-- Node.js
-- npm
-- PostgreSQL
+### Docker Setup
+
 - Git
+- Docker Desktop with Docker Compose v2 on Windows/macOS, or Docker Engine with the Compose plugin on Linux
+- A running Docker engine configured for Linux containers
+- Available host ports `5173` and `5000`
 
-Verify installation:
+Node.js, npm, and PostgreSQL run inside containers and do not need separate host installations for this option.
+
+```bash
+git --version
+docker --version
+docker compose version
+```
+
+### Local Setup
+
+- Git
+- Node.js and npm (the Docker build uses Node.js 22)
+- PostgreSQL and the `psql` command-line client (the Docker stack uses PostgreSQL 16)
 
 ```bash
 node --version
@@ -185,12 +261,181 @@ git --version
 
 ---
 
+# Docker Setup
+
+Run the commands below from the repository root, where `docker-compose.yml` is located. PowerShell examples are provided for Windows.
+
+## 1. Clone and Configure
+
+If you have not already cloned the repository:
+
+```bash
+git clone https://github.com/ribhupramanik/Assignment-Management-System.git MERN-JoinEazy_Task
+cd MERN-JoinEazy_Task
+```
+
+Copy the committed template to a private environment file:
+
+```powershell
+Copy-Item .env.docker.example .env.docker
+```
+
+On macOS/Linux, use `cp .env.docker.example .env.docker` instead.
+
+Edit `.env.docker` and replace every password/secret placeholder with your own value:
+
+```env
+DB_PASSWORD=replace_with_a_unique_database_password
+JWT_SECRET=replace_with_a_long_random_secret
+ADMIN_NAME=Joineazy Professor
+ADMIN_EMAIL=professor@joineazy.test
+ADMIN_PASSWORD=replace_with_a_unique_admin_password
+```
+
+These are placeholders, not working credentials. Keep `.env.docker` private and ignored by Git; commit only `.env.docker.example`. Do not put database passwords, JWT secrets, or admin passwords in `VITE_*` variables, which become part of the public browser bundle.
+
+Compose supplies the backend environment, including `DB_HOST=db`, `DB_PORT=5432`, and `CLIENT_URL=http://localhost:5173`. Separate host-side `backend/.env` and `frontend/.env` files are not required for this Docker setup. Local Setup below documents those files for running without Docker.
+
+## 2. Build and Start All Services
+
+Stop any local development servers using ports `5000` or `5173`, then run:
+
+```powershell
+docker compose --env-file .env.docker up --build -d
+```
+
+Omit `-d` to run attached and watch startup logs. You can rerun `up --build -d` while the existing Compose stack is running; a preliminary `down` is not required. Compose rebuilds images and recreates affected containers while retaining the database volume.
+
+The stack starts three containers:
+
+| Compose service | Container | Purpose | Host access |
+|---|---|---|---|
+| `db` | `joineazy-db` | PostgreSQL 16 | Internal network only, `db:5432` |
+| `backend` | `joineazy-backend` | Express API | `http://localhost:5000` → container port `5000` |
+| `frontend` | `joineazy-frontend` | Nginx serving React | `http://localhost:5173` → container port `80` |
+
+The recorded Docker verification showed PostgreSQL healthy and both application containers running. The Docker database also contained all six application tables and the seeded professor account. Use the checks below to verify your own run and application workflows.
+
+### Database Initialization and Startup Order
+
+On an empty PostgreSQL data volume, SQL files mounted from `backend/src/db/migrations` into `/docker-entrypoint-initdb.d` initialize the schema in filename order:
+
+1. `001_initial_schema.sql`
+2. `002_unique_group_name_per_creator.sql`
+
+The backend waits for the database health check, runs `npm run seed:admin`, and then runs `npm start`. The seed is repeatable and updates the configured professor account. The frontend starts after the backend container is started; this ordering alone is not an API readiness check.
+
+The Compose volume `joineazy_postgres_data` retains database data across container replacement and normal shutdown. Compose may prefix the actual volume name with the project name. This database is separate from a host-installed PostgreSQL database, so existing local students, groups, and assignments are not imported automatically.
+
+Initialization scripts run only when PostgreSQL initializes an empty data directory. Restarting containers or rebuilding images does not apply newly added migration files to an existing database. Apply later migrations deliberately to an existing database, or use the destructive reset below only when its data can be discarded. Changing `DB_PASSWORD` in the environment file also does not change the password of a database role in an already initialized volume.
+
+## 3. Verify the Stack
+
+```powershell
+docker compose --env-file .env.docker ps
+```
+
+Expected status:
+
+```text
+joineazy-db         Up (healthy)
+joineazy-backend    Up
+joineazy-frontend   Up
+```
+
+Open the [frontend](http://localhost:5173) and [API health endpoint](http://localhost:5000/api/health).
+
+Log in as professor using `ADMIN_EMAIL` and `ADMIN_PASSWORD` from your private `.env.docker`. Register student accounts through `/register`; there are no hard-coded student credentials.
+
+Verify these workflows:
+
+- Professor: log in, create and edit an assignment, select its audience, view submissions, and inspect analytics.
+- Student: register, log in, create a group, add a registered member, view an eligible assignment, open the OneDrive link, confirm submission, and view progress.
+- React Router: refresh `/student/groups` while logged in as a student and `/admin/assignments` while logged in as professor. Nginx should return the React application rather than an Nginx `404`.
+
+The frontend's `nginx.conf` uses `try_files $uri $uri/ /index.html;` to support direct visits and refreshes on client-side routes.
+
+Optionally inspect the database tables without installing PostgreSQL on the host:
+
+```powershell
+docker compose --env-file .env.docker exec db psql -U joineazy_user -d joineazy_db -c '\dt'
+```
+
+Expected tables: `users`, `groups`, `group_members`, `assignments`, `assignment_groups`, and `submissions`.
+
+## 4. View Logs and Rebuild
+
+```powershell
+docker compose --env-file .env.docker logs -f
+docker compose --env-file .env.docker logs -f backend
+docker compose --env-file .env.docker logs -f db
+docker compose --env-file .env.docker logs -f frontend
+```
+
+Run the desired log command; press `Ctrl+C` to leave log viewing. After source changes, rebuild with:
+
+```powershell
+docker compose --env-file .env.docker up --build -d
+```
+
+The containers use built application images rather than development hot reload. `VITE_API_URL` is a frontend build argument in Compose, so changing the browser API address requires rebuilding the frontend.
+
+## 5. Stop and Start Without Deleting Data
+
+```powershell
+docker compose --env-file .env.docker down
+```
+
+This removes the stack's containers and network while preserving its named PostgreSQL volume. Start again with:
+
+```powershell
+docker compose --env-file .env.docker up -d
+```
+
+## 6. Reset the Docker Database — Destructive
+
+**The following commands permanently delete the Docker PostgreSQL volume, including its students, groups, assignments, and submission confirmations. Back up any data you need first. This is not a routine shutdown command.**
+
+```powershell
+docker compose --env-file .env.docker down -v
+docker compose --env-file .env.docker up --build -d
+```
+
+PostgreSQL initializes a fresh database, reruns the initialization SQL, and the backend seeds the professor account from `.env.docker`. This reset targets the Compose database volume, not a separate host PostgreSQL installation.
+
+## Troubleshooting
+
+- **Port already allocated:** stop the local backend/Vite servers or other processes using `5000` or `5173`. If you change host ports, also align `CLIENT_URL` and the frontend API build argument with the browser-facing URLs.
+- **Backend cannot connect to PostgreSQL:** inspect `db` and `backend` logs; use `DB_HOST=db` inside Compose. PostgreSQL has no published host port in this setup.
+- **Schema changes are missing:** initialization SQL does not rerun on an existing volume. Apply the required migration or intentionally reset disposable data.
+- **Browser cannot reach the API:** confirm the API health endpoint is reachable and that the frontend was built with `http://localhost:5000/api` for this local setup. The browser cannot resolve the Compose hostname `backend`.
+- **Professor login fails:** check the private admin environment values and backend seed logs. The Docker account comes from `.env.docker`, independently of a locally seeded account.
+
+---
+
+## Deployment Decisions
+
+The current deployment is a local Docker Compose stack for reproducible setup, evaluation, and demonstrations. A public hosted deployment is not documented as completed.
+
+- **Separate services:** frontend, API, and database have distinct containers and responsibilities.
+- **Frontend production build:** a multi-stage Dockerfile builds React/Vite with Node.js and copies `dist/` into Nginx. The final frontend container serves static files without a Vite development server.
+- **Internal database networking:** only the frontend and API publish host ports. Keeping PostgreSQL internal also avoids conflicts with a host PostgreSQL installation on port `5432`.
+- **Persistent data:** a named volume survives ordinary shutdown and image rebuilds; deleting it is an explicit reset operation.
+- **Repeatable initial setup:** PostgreSQL initialization scripts and the admin seed prepare a fresh environment. The initialization mount is not an ongoing migration runner for existing databases.
+- **Environment-specific configuration:** private credentials stay in ignored environment files. The browser API URL is set at build time, while backend configuration is supplied when its container starts.
+
+For a future public deployment, use browser-reachable HTTPS frontend/API addresses, update the backend `CLIENT_URL`, and rebuild the frontend with the deployed `VITE_API_URL`. `localhost` refers to each visitor's own machine and is unsuitable as a public API address. Configure TLS, private database access, provider-required database SSL, managed secrets, backups, and a controlled migration process before using persistent production data. Protect the initial professor credentials and account for the seed updating that account on backend startup.
+
+---
+
 # Local Setup
+
+Use this option to run PostgreSQL, the backend, and the Vite development server directly on your machine. Stop the Docker stack first if it is using ports 5000 and 5173.
 
 ## 1. Clone the Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/ribhupramanik/Assignment-Management-System.git MERN-JoinEazy_Task
 cd MERN-JoinEazy_Task
 ```
 
@@ -388,7 +633,7 @@ GET http://localhost:5000/api/health
 
 ## 11. Install Frontend Dependencies
 
-Open another terminal:
+Open another terminal at the repository root:
 
 ```bash
 cd frontend
@@ -705,7 +950,8 @@ Assignment
  └── has Submission confirmations
 ```
 
-A dedicated ER diagram can be found in the project documentation once generated.
+A detailed ER diagram and database documentation are available in
+[docs/database.md](docs/database.md).
 
 ---
 
@@ -724,6 +970,8 @@ The application includes:
 - Hidden unauthorized resources using `404` responses where appropriate
 - Environment variables for secrets
 - Admin account creation through a server-side seed rather than public registration
+
+Keep `backend/.env`, `frontend/.env`, and `.env.docker` out of Git and shared ZIP archives. Commit only sanitized `.env.example` and `.env.docker.example` templates. All passwords and secrets shown in this README are placeholders; supply private values in your own environment. Frontend configuration is public and must never contain secrets.
 
 ---
 
@@ -778,6 +1026,8 @@ The application was developed incrementally with Git commits covering:
 - Student frontend
 - Professor frontend
 - Responsive design and reliability improvements
+
+Docker support adds separate backend/frontend images, an Nginx configuration, and a Compose stack with persistent PostgreSQL storage.
 
 This provides a clear project history rather than delivering the application as a single generated commit.
 
