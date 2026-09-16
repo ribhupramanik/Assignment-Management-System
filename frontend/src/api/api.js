@@ -19,4 +19,30 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+api.interceptors.response.use(
+  (response) => response,
+
+  (error) => {
+    const status = error.response?.status
+
+    const token = localStorage.getItem(
+      'joineazy_token'
+    )
+
+    if (status === 401 && token) {
+      localStorage.removeItem(
+        'joineazy_token'
+      )
+
+      if (
+        window.location.pathname !== '/login'
+      ) {
+        window.location.href = '/login'
+      }
+    }
+
+    return Promise.reject(error)
+  }
+)
+
 export default api

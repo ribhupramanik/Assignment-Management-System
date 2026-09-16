@@ -17,6 +17,7 @@ import AdminHomePage from "./pages/AdminHomePage";
 import AdminAssignmentsPage from "./pages/AdminAssignmentsPage";
 import AdminAssignmentDetailPage from "./pages/AdminAssignmentDetailPage";
 import AdminSubmissionTrackingPage from './pages/AdminSubmissionTrackingPage'
+import NotFoundPage from './pages/NotFoundPage'
 
 function App() {
   return (
@@ -59,7 +60,7 @@ function App() {
         <Route path="assignments/:assignmentId/submissions" element={<AdminSubmissionTrackingPage />} />
       </Route>
 
-      <Route path="*" element={<HomeRedirect />} />
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
 }
