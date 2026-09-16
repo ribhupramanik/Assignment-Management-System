@@ -13,6 +13,8 @@ import StudentHomePage from "./pages/StudentHomePage";
 import StudentGroupsPage from "./pages/StudentGroupsPage";
 import StudentAssignmentsPage from "./pages/StudentAssignmentsPage";
 import StudentProgressPage from "./pages/StudentProgressPage";
+import AdminHomePage from "./pages/AdminHomePage";
+import AdminAssignmentsPage from "./pages/AdminAssignmentsPage";
 
 function App() {
   return (
@@ -48,7 +50,11 @@ function App() {
             </RoleRoute>
           </ProtectedRoute>
         }
-      />
+      >
+        <Route index element={<AdminHomePage />} />
+
+        <Route path="assignments" element={<AdminAssignmentsPage />} />
+      </Route>
 
       <Route path="*" element={<HomeRedirect />} />
     </Routes>
