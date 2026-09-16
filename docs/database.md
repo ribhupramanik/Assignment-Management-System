@@ -56,6 +56,7 @@ erDiagram
         BIGINT id PK
         BIGINT assignment_id FK
         BIGINT group_id FK
+        TIMESTAMPTZ assigned_at
     }
 
     SUBMISSIONS {
