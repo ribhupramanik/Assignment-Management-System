@@ -422,8 +422,8 @@ const AdminAssignmentsPage = () => {
                       )}
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-3">
-                    <span className="text-sm text-gray-500">
+                  <div className="w-full sm:w-auto">
+                    <p className="mb-2 text-sm text-gray-500 sm:text-right">
                       {assignment.scope === "all"
                         ? "All students"
                         : `${assignment.assigned_group_count} ${
@@ -431,14 +431,23 @@ const AdminAssignmentsPage = () => {
                               ? "group"
                               : "groups"
                           }`}
-                    </span>
+                    </p>
 
-                    <Link
-                      to={`/admin/assignments/${assignment.id}`}
-                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                    >
-                      View / Edit
-                    </Link>
+                    <div className="grid grid-cols-2 gap-2 sm:flex">
+                      <Link
+                        to={`/admin/assignments/${assignment.id}`}
+                        className="whitespace-nowrap rounded-lg border border-gray-300 px-3 py-2 text-center text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                      >
+                        View / Edit
+                      </Link>
+
+                      <Link
+                        to={`/admin/assignments/${assignment.id}/submissions`}
+                        className="whitespace-nowrap rounded-lg border border-gray-300 px-3 py-2 text-center text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                      >
+                        Submissions
+                      </Link>
+                    </div>
                   </div>
                 </div>
               </div>

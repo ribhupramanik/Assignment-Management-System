@@ -215,7 +215,7 @@ const AdminAssignmentDetailPage = () => {
           to="/admin/assignments"
           className="text-sm font-medium text-gray-600 hover:text-gray-900"
         >
-          ← Back to assignments
+          ← All assignments
         </Link>
 
         <p className="mt-5 text-sm font-medium text-gray-500">
@@ -229,6 +229,14 @@ const AdminAssignmentDetailPage = () => {
         <p className="mt-2 text-gray-600">
           View and update assignment details.
         </p>
+        <div className="mt-4">
+          <Link
+            to={`/admin/assignments/${assignmentId}/submissions`}
+            className="inline-flex rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800"
+          >
+            View submissions
+          </Link>
+        </div>
       </div>
 
       {error && (

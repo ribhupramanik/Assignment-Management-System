@@ -16,6 +16,7 @@ import StudentProgressPage from "./pages/StudentProgressPage";
 import AdminHomePage from "./pages/AdminHomePage";
 import AdminAssignmentsPage from "./pages/AdminAssignmentsPage";
 import AdminAssignmentDetailPage from "./pages/AdminAssignmentDetailPage";
+import AdminSubmissionTrackingPage from './pages/AdminSubmissionTrackingPage'
 
 function App() {
   return (
@@ -54,8 +55,8 @@ function App() {
       >
         <Route index element={<AdminHomePage />} />
         <Route path="assignments" element={<AdminAssignmentsPage />} />
-        <Route path="assignments/:assignmentId" element={<AdminAssignmentDetailPage />}
-        />
+        <Route path="assignments/:assignmentId" element={<AdminAssignmentDetailPage />} />
+        <Route path="assignments/:assignmentId/submissions" element={<AdminSubmissionTrackingPage />} />
       </Route>
 
       <Route path="*" element={<HomeRedirect />} />
