@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+
+import { Link, useParams } from "react-router-dom";
 
 import api from "../api/api";
 
-const initialForm = {
-  title: "",
-  description: "",
-  dueDate: "",
-  onedriveLink: "",
-  scope: "all",
-  groupIds: [],
+const toDateTimeLocal = (value) => {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  const timezoneOffset = date.getTimezoneOffset() * 60 * 1000;
+
+  return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16);
 };
 
 const formatDate = (value) => {
@@ -21,45 +23,72 @@ const formatDate = (value) => {
   }).format(new Date(value));
 };
 
-const AdminAssignmentsPage = () => {
-  const [assignments, setAssignments] = useState([]);
+const AdminAssignmentDetailPage = () => {
+  const { assignmentId } = useParams();
+
+  const [assignment, setAssignment] = useState(null);
 
   const [groups, setGroups] = useState([]);
 
-  const [form, setForm] = useState(initialForm);
+  const [form, setForm] = useState({
+    title: "",
+    description: "",
+    dueDate: "",
+    onedriveLink: "",
+    scope: "all",
+    groupIds: [],
+  });
 
   const [loading, setLoading] = useState(true);
 
-  const [submitting, setSubmitting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const [error, setError] = useState("");
+
   const [success, setSuccess] = useState("");
 
-  const loadData = useCallback(async () => {
+  const loadAssignment = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
 
-      const [assignmentsResponse, groupsResponse] = await Promise.all([
-        api.get("/admin/assignments"),
+      const [assignmentResponse, groupsResponse] = await Promise.all([
+        api.get(`/admin/assignments/${assignmentId}`),
+
         api.get("/admin/groups"),
       ]);
 
-      setAssignments(assignmentsResponse.data.assignments);
+      const fetchedAssignment = assignmentResponse.data.assignment;
+
+      setAssignment(fetchedAssignment);
 
       setGroups(groupsResponse.data.groups);
+
+      setForm({
+        title: fetchedAssignment.title || "",
+
+        description: fetchedAssignment.description || "",
+
+        dueDate: toDateTimeLocal(fetchedAssignment.due_date),
+
+        onedriveLink: fetchedAssignment.onedrive_link || "",
+
+        scope: fetchedAssignment.scope,
+
+        groupIds:
+          fetchedAssignment.assigned_groups?.map((group) => Number(group.id)) ||
+          [],
+      });
     } catch (error) {
-      setError(
-        error.response?.data?.message || "Unable to load assignment data",
-      );
+      setError(error.response?.data?.message || "Unable to load assignment");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [assignmentId]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadAssignment();
+  }, [loadAssignment]);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -76,20 +105,21 @@ const AdminAssignmentsPage = () => {
     setForm((current) => ({
       ...current,
       scope,
+
       groupIds: scope === "all" ? [] : current.groupIds,
     }));
   };
 
   const handleGroupToggle = (groupId) => {
     setForm((current) => {
-      const alreadySelected = current.groupIds.some(
+      const exists = current.groupIds.some(
         (id) => String(id) === String(groupId),
       );
 
       return {
         ...current,
 
-        groupIds: alreadySelected
+        groupIds: exists
           ? current.groupIds.filter((id) => String(id) !== String(groupId))
           : [...current.groupIds, Number(groupId)],
       };
@@ -123,7 +153,7 @@ const AdminAssignmentsPage = () => {
     }
 
     try {
-      setSubmitting(true);
+      setSaving(true);
 
       const payload = {
         title: form.title.trim(),
@@ -139,31 +169,65 @@ const AdminAssignmentsPage = () => {
         groupIds: form.scope === "groups" ? form.groupIds : [],
       };
 
-      const response = await api.post("/admin/assignments", payload);
+      await api.patch(`/admin/assignments/${assignmentId}`, payload);
 
-      setForm(initialForm);
+      await loadAssignment();
 
-      await loadData();
-
-      setSuccess(`${response.data.assignment.title} created successfully`);
+      setSuccess("Assignment updated successfully");
     } catch (error) {
-      setError(error.response?.data?.message || "Unable to create assignment");
+      setError(error.response?.data?.message || "Unable to update assignment");
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-500">
+        Loading assignment...
+      </div>
+    );
+  }
+
+  if (!assignment) {
+    return (
+      <div className="space-y-4">
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        <Link
+          to="/admin/assignments"
+          className="text-sm font-medium text-gray-900 underline"
+        >
+          Back to assignments
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="min-w-0 space-y-6">
       <div>
-        <p className="text-sm font-medium text-gray-500">Coursework</p>
+        <Link
+          to="/admin/assignments"
+          className="text-sm font-medium text-gray-600 hover:text-gray-900"
+        >
+          ← Back to assignments
+        </Link>
 
-        <h2 className="mt-1 text-2xl font-bold text-gray-900 sm:text-3xl">
-          Assignments
+        <p className="mt-5 text-sm font-medium text-gray-500">
+          Assignment Management
+        </p>
+
+        <h2 className="mt-1 break-words text-2xl font-bold text-gray-900 sm:text-3xl">
+          {assignment.title}
         </h2>
 
         <p className="mt-2 text-gray-600">
-          Create assignments and assign them to all students or specific groups.
+          View and update assignment details.
         </p>
       </div>
 
@@ -179,15 +243,43 @@ const AdminAssignmentsPage = () => {
         </div>
       )}
 
-      {/* Create Assignment */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
+          <p className="text-sm text-gray-500">Scope</p>
+
+          <p className="mt-2 font-semibold text-gray-900">
+            {assignment.scope === "all" ? "All students" : "Specific groups"}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
+          <p className="text-sm text-gray-500">Due date</p>
+
+          <p className="mt-2 font-semibold text-gray-900">
+            {formatDate(assignment.due_date)}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
+          <p className="text-sm text-gray-500">Assigned groups</p>
+
+          <p className="mt-2 font-semibold text-gray-900">
+            {assignment.scope === "all"
+              ? "All students"
+              : assignment.assigned_groups?.length || 0}
+          </p>
+        </div>
+      </div>
+
       <div className="rounded-xl border border-gray-200 bg-white p-5 sm:p-6">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">
-            Create assignment
+            Edit assignment
           </h3>
 
           <p className="mt-1 text-sm text-gray-500">
-            Add assignment information and choose who should receive it.
+            Changes will immediately affect the students who can access this
+            assignment.
           </p>
         </div>
 
@@ -207,7 +299,6 @@ const AdminAssignmentsPage = () => {
               onChange={handleChange}
               maxLength={200}
               required
-              placeholder="e.g. Database Fundamentals"
               className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-gray-900"
             />
           </div>
@@ -225,8 +316,7 @@ const AdminAssignmentsPage = () => {
               name="description"
               value={form.description}
               onChange={handleChange}
-              rows={4}
-              placeholder="Assignment instructions..."
+              rows={5}
               className="mt-2 w-full resize-y rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-gray-900"
             />
           </div>
@@ -288,26 +378,23 @@ const AdminAssignmentsPage = () => {
               value={form.onedriveLink}
               onChange={handleChange}
               required
-              placeholder="https://..."
               className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2.5 outline-none focus:border-gray-900"
             />
           </div>
 
           {form.scope === "groups" && (
             <div>
-              <div>
-                <p className="text-sm font-medium text-gray-700">
-                  Select groups
-                </p>
+              <p className="text-sm font-medium text-gray-700">
+                Assigned groups
+              </p>
 
-                <p className="mt-1 text-xs text-gray-500">
-                  Choose one or more groups for this assignment.
-                </p>
-              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Select one or more student groups.
+              </p>
 
               {groups.length === 0 ? (
                 <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                  No student groups are currently available.
+                  No groups are available.
                 </div>
               ) : (
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -343,10 +430,6 @@ const AdminAssignmentsPage = () => {
                               {group.member_count}{" "}
                               {group.member_count === 1 ? "member" : "members"}
                             </p>
-
-                            <p className="mt-1 text-xs text-gray-500">
-                              Created by {group.created_by_name}
-                            </p>
                           </div>
                         </div>
                       </label>
@@ -361,93 +444,17 @@ const AdminAssignmentsPage = () => {
             <button
               type="submit"
               disabled={
-                submitting || (form.scope === "groups" && groups.length === 0)
+                saving || (form.scope === "groups" && groups.length === 0)
               }
               className="w-full rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             >
-              {submitting ? "Creating..." : "Create assignment"}
+              {saving ? "Saving..." : "Save changes"}
             </button>
           </div>
         </form>
-      </div>
-
-      {/* Existing Assignments */}
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-        <div className="border-b border-gray-200 px-5 py-4">
-          <h3 className="font-semibold text-gray-900">Existing assignments</h3>
-        </div>
-
-        {loading ? (
-          <p className="p-5 text-sm text-gray-500">Loading assignments...</p>
-        ) : assignments.length === 0 ? (
-          <div className="p-8 text-center">
-            <p className="font-medium text-gray-900">No assignments yet</p>
-
-            <p className="mt-1 text-sm text-gray-500">
-              Create your first assignment using the form above.
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {assignments.map((assignment) => (
-              <div key={assignment.id} className="p-5">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h4 className="break-words font-semibold text-gray-900">
-                        {assignment.title}
-                      </h4>
-
-                      <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
-                        {assignment.scope === "all" ? "All students" : "Groups"}
-                      </span>
-                    </div>
-
-                    <p className="mt-2 text-sm text-gray-500">
-                      Due {formatDate(assignment.due_date)}
-                    </p>
-
-                    {assignment.scope === "groups" &&
-                      assignment.assigned_groups?.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {assignment.assigned_groups.map((group) => (
-                            <span
-                              key={group.id}
-                              className="rounded-full border border-gray-200 px-2.5 py-1 text-xs text-gray-600"
-                            >
-                              {group.name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-3">
-                    <span className="text-sm text-gray-500">
-                      {assignment.scope === "all"
-                        ? "All students"
-                        : `${assignment.assigned_group_count} ${
-                            assignment.assigned_group_count === 1
-                              ? "group"
-                              : "groups"
-                          }`}
-                    </span>
-
-                    <Link
-                      to={`/admin/assignments/${assignment.id}`}
-                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-                    >
-                      View / Edit
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
 };
 
-export default AdminAssignmentsPage;
+export default AdminAssignmentDetailPage;
