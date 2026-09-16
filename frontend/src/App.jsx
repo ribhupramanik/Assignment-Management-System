@@ -11,6 +11,8 @@ import AdminDashboard from "./pages/AdminDashboard";
 
 import StudentHomePage from "./pages/StudentHomePage";
 import StudentGroupsPage from "./pages/StudentGroupsPage";
+import StudentAssignmentsPage from "./pages/StudentAssignmentsPage";
+import StudentProgressPage from "./pages/StudentProgressPage";
 
 function App() {
   return (
@@ -32,8 +34,9 @@ function App() {
         }
       >
         <Route index element={<StudentHomePage />} />
-
         <Route path="groups" element={<StudentGroupsPage />} />
+        <Route path="assignments" element={<StudentAssignmentsPage />} />
+        <Route path="progress" element={<StudentProgressPage />} />
       </Route>
 
       <Route

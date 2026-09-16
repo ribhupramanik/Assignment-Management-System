@@ -1,32 +1,27 @@
-import { Link } from 'react-router-dom'
+import { Link } from "react-router-dom";
 
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from "../context/AuthContext";
 
 const StudentHomePage = () => {
-  const { user } = useAuth()
+  const { user } = useAuth();
 
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm font-medium text-gray-500">
-          Student Dashboard
-        </p>
+        <p className="text-sm font-medium text-gray-500">Student Dashboard</p>
 
         <h2 className="mt-1 text-2xl font-bold text-gray-900 sm:text-3xl">
           Welcome, {user.name}
         </h2>
 
         <p className="mt-2 text-gray-600">
-          Manage your groups and assignment activity
-          from your dashboard.
+          Manage your groups and assignment activity from your dashboard.
         </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-xl border border-gray-200 bg-white p-6">
-          <p className="text-sm text-gray-500">
-            Student ID
-          </p>
+          <p className="text-sm text-gray-500">Student ID</p>
 
           <p className="mt-2 text-lg font-semibold text-gray-900">
             {user.student_id}
@@ -34,9 +29,7 @@ const StudentHomePage = () => {
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-6">
-          <p className="text-sm text-gray-500">
-            Email
-          </p>
+          <p className="text-sm text-gray-500">Email</p>
 
           <p className="mt-2 break-all text-lg font-semibold text-gray-900">
             {user.email}
@@ -45,13 +38,11 @@ const StudentHomePage = () => {
       </div>
 
       <div className="rounded-xl border border-gray-200 bg-white p-6">
-        <h3 className="text-lg font-semibold text-gray-900">
-          Groups
-        </h3>
+        <h3 className="text-lg font-semibold text-gray-900">Groups</h3>
 
         <p className="mt-2 text-gray-600">
-          Create a group, view its members, or add
-          students using their email or student ID.
+          Create a group, view its members, or add students using their email or
+          student ID.
         </p>
 
         <Link
@@ -61,8 +52,38 @@ const StudentHomePage = () => {
           Manage groups
         </Link>
       </div>
-    </div>
-  )
-}
 
-export default StudentHomePage
+      <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <h3 className="text-lg font-semibold text-gray-900">Assignments</h3>
+
+        <p className="mt-2 text-sm text-gray-600">
+          View assignments and confirm your submissions.
+        </p>
+
+        <Link
+          to="/student/assignments"
+          className="mt-5 inline-flex text-sm font-medium text-gray-900 underline"
+        >
+          View assignments
+        </Link>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <h3 className="text-lg font-semibold text-gray-900">Progress</h3>
+
+        <p className="mt-2 text-sm text-gray-600">
+          Track assignment completion across your groups.
+        </p>
+
+        <Link
+          to="/student/progress"
+          className="mt-5 inline-flex text-sm font-medium text-gray-900 underline"
+        >
+          View progress
+        </Link>
+      </div>
+    </div>
+  );
+};
+
+export default StudentHomePage;
